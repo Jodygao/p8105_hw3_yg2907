@@ -1,0 +1,411 @@
+---
+title: "P8105 Homework 3"
+author: "Yuandi Gao"
+date: "2023-10-13"
+output: github_document
+---
+# Load libraries and settings
+
+```{r,include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+
+knitr::opts_chunk$set(
+	echo = TRUE,
+	warning = FALSE,
+	fig.width = 8, 
+  fig.height = 6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal())
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+
+```
+# Question 1:
+
+```{r}
+#read dataset
+library(p8105.datasets)
+data("instacart")
+```
+
+There are a total of `r length(instacart)` variables. There are `r nrow(instacart)` rows and `r ncol(instacart)` columns. Examples of key variables include order ID, product ID, user ID, product name, aisle ID, aisle number, etc.
+
+# Number of aisles and most items ordered from aisles
+
+```{r}
+instacart_df = 
+  instacart |>
+  group_by(aisle_id, aisle) |>
+  summarize(n_obs = n())
+```
+
+There are 134 aisles. The aisles with the most items are: fresh vegetables, fresh fruits, and packaged vegetable fruits. 
+
+# Number of items ordered in each aisle
+
+```{r}
+aisle_df = 
+  instacart |>
+  count(aisle) |>
+  filter(n > 10000) |>
+  mutate(
+    aisle_id = as.factor(aisle),
+    aisle_id = fct_reorder(aisle, n)
+  )
+
+aisle_plot =
+  ggplot(aisle_df, aes(x = aisle, y = n)) + 
+  geom_point() +
+  labs(
+    title = "Orders by aisle",
+    x = "Aisles",
+    y = "Number of orders") +
+  theme(axis.text.x = element_text(angle = 90))
+
+aisle_plot
+```
+Aisles are arranged alphabetically and aisle names are vertical for readability. The plot shows that fresh fruit and fresh vegetables have the highest number of orders. 
+
+# Most popular items in “baking ingredients”, “dog food care”, and “packaged vegetables fruits”
+
+```{r}
+instacart_table =
+instacart |> 
+  filter(aisle %in% c("baking ingredients", "dog food care", "packaged vegetables fruits")) |>
+  group_by(aisle) |> 
+  count(product_name) |> 
+  mutate(rank = min_rank(desc(n))) |> 
+  filter(rank < 4) |> 
+  arrange(desc(n)) |>
+  select(aisle, product_name, n) |> 
+  knitr::kable()
+
+instacart_table
+```
+
+- The three most ordered products within the packaged vegetables fruits aisle are: organic baby spinach, organic raspberries, and organic blueberries. 
+- The three most ordered products within the baking ingredients aisle are: light brown sugar, pure baking soda, and cane sugar. 
+- The three most ordered products within the dog food care aisle are: snack sticks chicken & rice recipe dog treats, organix chicken & brown rice recipe, and small dog biscuits.
+
+# Pink Lady Apples and Coffee Ice Cream
+
+```{r}
+apples_coffee_table =
+  instacart |> 
+  select(product_name, order_hour_of_day, order_dow) |> 
+  filter(product_name %in% c("Pink Lady Apples", "Coffee Ice Cream")) |> 
+  group_by(product_name, order_dow) |>
+  summarize(
+    mean_hour_of_day = mean(order_hour_of_day, na.rm = TRUE)
+  ) |>
+  pivot_wider(
+    names_from = order_dow, 
+    values_from = mean_hour_of_day) |>
+   knitr::kable(digits = 2)
+
+apples_coffee_table
+```
+The mean hour of day ranges from 11am to 4pm for both coffee ice cream and pink lady apples by day of the week. For all but day 5, pink lady apples are ordered earlier than coffee ice cream.
+
+# Problem 2: BRFSS
+
+```{r}
+data("brfss_smart2010")
+```
+
+# Data wrangling of brfsss_smart2010
+
+```{r}
+brfss_smart2010_df = 
+  brfss_smart2010 |>
+  janitor::clean_names() |>
+  select(-location_id) |>
+  filter(topic == "Overall Health") |>
+  mutate(
+    response = factor(response, levels = c("Poor", "Fair", "Good", "Very Good", "Excellent"))
+  ) |>
+  arrange(response)
+```
+
+There are a total of `r length(brfss_smart2010_df)` variables. There are `r nrow(brfss_smart2010_df)` rows and `r ncol(brfss_smart2010_df)` columns.
+
+# 7 or more locations in states in 2002 and 2010
+
+```{r}
+locations_2002 = 
+brfss_smart2010_df |>
+  filter(year==2002) |>
+  group_by(locationabbr) |>
+  summarize(
+    n_obs = n(),
+    n_sites = n_distinct(locationdesc)
+    ) |>
+  filter(n_sites >= 7) |>
+  select(locationabbr)
+
+locations_2010 = 
+  brfss_smart2010_df |>
+  filter(year==2010) |>
+  group_by(locationabbr) |>
+  summarize(
+    n_obs = n(),
+    n_sites = n_distinct(locationdesc)
+    ) |>
+  filter(n_sites >= 7) |>
+  select(locationabbr)
+```
+
+In 2002, the states that were observed at 7 or more sites are `r list(locations_2002)`.
+
+In 2010, the states that were observed at 7 or more sites are  `r list(locations_2010)`.
+
+# Average data_value across locations within a state for 'Excellent' responses
+
+```{r}
+excellent_data =
+  brfss_smart2010_df |>
+  filter(response == "Excellent") |>
+  select(year, locationabbr, data_value) |>
+  group_by(locationabbr, year) |>
+  mutate(
+    mean_data_value = mean(data_value, na.rm = TRUE)
+  ) 
+excellent_plot =
+  ggplot(excellent_data, aes(x = year, y = mean_data_value, group = locationabbr, color = locationabbr)) +
+  geom_line() +
+  labs(
+    title = "Average data value across locations within a state",
+    x = "Year",
+    y = "Average data value",
+    color = "State"
+    )
+
+excellent_plot
+```
+
+The `average data value` fluctuates by `year` for most states. The `average data value` appears to decrease over time.
+
+# Distribution of data_value for responses (“Poor” to “Excellent”) among locations in NY State for 2006 and 2010
+
+```{r}
+ny2006_data =
+  brfss_smart2010_df |>
+  filter(locationabbr == "NY", year == "2006") |>
+  drop_na(response)
+
+ny2006_plot =
+ggplot(ny2006_data, aes(x = response, y = data_value, color = locationdesc)) +
+  geom_point() +
+  labs(
+    title = "Data value distribution in responses among NY locations in 2006",
+    x = "Response",
+    y = "Data value",
+    color = "County"
+  )
+
+ny2010_data =
+  brfss_smart2010_df |>
+  filter(locationabbr == "NY", year == "2010") |>
+  drop_na(response)
+
+ny2010_plot =
+ggplot(ny2010_data, aes(x = response, y = data_value, color = locationdesc)) +
+  geom_point() +
+  labs(
+    title = "Data value distribution in responses among NY locations in 2010",
+    x = "Response",
+    y = "Data value",
+    color = "County"
+  )
+
+ny2006_plot + ny2010_plot
+```
+
+`2006` and `2010` have a similar distribution of `data_value` for responses (“Poor” to “Excellent”) among locations in NY State. `2010` has more locations within NY state.
+
+# Problem 3: NHANES
+
+# Data wrangling of accelerometer data
+
+```{r}
+nhanes_accel_data = 
+  read_csv("./nhanes_data/nhanes_accel.csv") |>
+  janitor::clean_names() |>
+  pivot_longer(
+    !seqn,
+    names_to = "minute",
+    names_prefix = "min",
+    values_to = "mims"
+  )
+```
+
+# Data wrangling of accelerometer data
+
+```{r}
+nhanes_covar_data = 
+  read_csv("./nhanes_data/nhanes_covar.csv", skip = 4) |>
+  janitor::clean_names() |>
+  mutate(
+    sex =
+      case_match(
+        sex,
+        1 ~ "Male",
+        2 ~ "Female"
+        ),
+    sex = as.factor(sex),
+    education =
+      case_match(
+        education,
+        1 ~ "Level 1",
+        2 ~ "Level 2",
+        3 ~ "Level 3"
+      ),
+    education = as.factor(education)
+  ) 
+```
+
+# Data merging
+
+```{r}
+final_nhanes_data =
+  full_join(nhanes_covar_data, nhanes_accel_data) |>
+  filter(age > 20) |>
+  drop_na(sex, age, bmi, education) |>
+  mutate(
+    sex = as.factor(sex),
+    education = as.factor(education)
+  )
+```
+
+# Men and women in each education category and their age distribution
+
+```{r}
+sex_education_table =
+  final_nhanes_data |>
+  select(sex, education) |>
+  group_by(sex, education) |>
+  summarize(count = n()) |>
+  knitr::kable(digits = 1)
+
+sex_education_table
+
+sex_education_age_plot =
+  ggplot(final_nhanes_data, aes(x = age, fill = sex)) +     
+  geom_density(alpha = .5, adjust = .5) +
+  labs(
+    title = "Age distribution by sex across education levels",
+    x = "Age (in years) of participants",
+    y = "Density of participants",
+    fill = "Sex of participants"
+  ) +
+  facet_grid(. ~ education, labeller = label_both) +
+  scale_x_continuous(
+    breaks = c(10, 20, 30, 40, 50, 60, 70, 80)
+  )
+
+sex_education_age_plot
+```
+
+# Men and women in each education category and their age distribution
+
+```{r}
+sex_education_table =
+  final_nhanes_data |>
+  select(sex, education) |>
+  group_by(sex, education) |>
+  summarize(count = n()) |>
+  knitr::kable(digits = 1)
+
+sex_education_table
+
+sex_education_age_plot =
+  ggplot(final_nhanes_data, aes(x = age, fill = sex)) +     
+  geom_density(alpha = .5, adjust = .5) +
+  labs(
+    title = "Age distribution by sex across education levels",
+    x = "Age (in years) of participants",
+    y = "Density of participants",
+    fill = "Sex of participants"
+  ) +
+  facet_grid(. ~ education, labeller = label_both) +
+  scale_x_continuous(
+    breaks = c(10, 20, 30, 40, 50, 60, 70, 80)
+  )
+
+sex_education_age_plot
+```
+- The highest density for both female and male participants within the third level of education: the younger age group ranging from 20 to 30 years old. 
+- The highest densities for female participants within the second level of education is in the older age group ranging from 60 to 80 years old. 
+However, for the male participants within the second level of education, the highest density is among the younger population. 
+
+- Within the first level of education, the density increases with age for female participants. The highest density for male participants within the first level of education is in the middle-aged group ranging from 40 to 50 years old. 
+
+# Total activity by sex across education levels
+
+```{r}
+nhanes_total_activity_data =
+  final_nhanes_data |>
+  group_by(seqn) |>
+  mutate(
+    total_activity = sum(mims)
+    )
+
+nhanes_total_activity_plot =
+  ggplot(nhanes_total_activity_data, aes(x = age, y = total_activity, color = sex)) +
+  geom_point(alpha = .5) +
+  geom_smooth(se = FALSE) +
+  facet_grid(. ~ education, labeller = label_both) +
+  labs(
+    title = "Total activity by age and sex across education levels",
+    x = "Age (in years)",
+    y = "Total activity (in mims)",
+    color = "Sex"
+  )
+
+nhanes_total_activity_plot
+```
+- Younger female participants are more active across all levels of education compared to younger male participants. 
+- Older men are more active in the first level of education, but less active in both the second and third level of education. 
+- Older women with the highest education are most active compared to younger women and men, in general.
+
+# 24-hour activity time courses by sex over education levels
+
+```{r}
+nhanes_24_hour_data =
+  final_nhanes_data |>
+  group_by(seqn) |>
+  mutate(
+    minute = as.numeric(minute),
+    mims_by_hour = mims/60, 
+    hour = minute/60
+    )
+
+nhanes_24_hour_plot =
+  ggplot(nhanes_24_hour_data, aes(x = hour, y = mims_by_hour, color = sex)) +
+  geom_point(alpha = .1) +
+  geom_smooth(se = FALSE) +
+  facet_grid(. ~ education, labeller = label_both) +
+  labs(    
+    title = "24-hour activity by sex across education levels",
+    x = "Hours (in a day)",
+    y = "Activity (in mims)",
+    color = "Sex"
+    ) +
+  scale_x_continuous(
+    breaks = c(0, 4, 8, 12, 16, 20, 24)
+    )
+
+nhanes_24_hour_plot
+```
+
+Male and female participants across education levels and a 24-hour period have a similar pattern in activity throughout the day. However, in the highest level of education, there is a greater distribution of activity over the 24-hour period among both females and males. The x-axis shows hours in a day instead of minutes to make the graph more legible. 
